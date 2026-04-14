@@ -1,0 +1,6 @@
+# VK Bot dependencies
+vkbottle==4.8.1
+python-dotenv==1.0.0
+requests==2.32.5
+faiss-cpu==1.13.0
+numpy==1.26.4
