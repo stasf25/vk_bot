@@ -1,5 +1,5 @@
 """
-VK-бот с RAG-функциональностью на основе aitunnel.ru.
+VK-бот с RAG-функциональностью.
 """
 
 import asyncio
@@ -9,10 +9,11 @@ from typing import List
 from vkbottle.bot import Bot, Message as VKMessage
 from vkbottle.dispatch.rules.base import TextRule, FuncRule
 
-from config import API_TOKEN, API_URL, API_KEY, CHAT_MODEL, VISION_MODEL, EMBED_MODEL, \
-    CHAT_ENDPOINT, EMBEDDINGS_ENDPOINT, REQUEST_TIMEOUT, DOCS_PATH, \
+from config import VK_API_TOKEN, CHAT_API_URL, CHAT_API_KEY, CHAT_MODEL, VISION_API_URL, VISION_API_KEY, VISION_ENDPOINT, VISION_MODEL, EMBED_MODEL, \
+    CHAT_ENDPOINT, EMBED_ENDPOINT, REQUEST_TIMEOUT, DOCS_PATH, \
     FAISS_INDEX_PATH, FAISS_METADATA_PATH, TOP_K_RESULTS, MAX_CONTEXT_LENGTH, \
     SYSTEM_PROMPT, RAG_PROMPT_TEMPLATE, LOG_LEVEL, LOG_FORMAT
+from rag.pipeline import RAGPipeline
 
 # ========== НАСТРОЙКА ЛОГИРОВАНИЯ ==========
 logging.basicConfig(
@@ -26,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ========== ИНИЦИАЛИЗАЦИЯ БОТА ==========
-bot = Bot(token=API_TOKEN)
+bot = Bot(token=VK_API_TOKEN)
 
 # ========== ПАМЯТЬ РАЗГОВОРОВ ==========
 # Словарь для хранения истории сообщений каждого пользователя
@@ -154,6 +155,56 @@ async def send_long_message(message: VKMessage, text: str, max_length: int = 400
         await asyncio.sleep(0.5)
 
 
+async def handle_photo(message: VKMessage, user_query: str):
+    """
+    Обработчик фотографий - извлекает текст с изображения.
+    """
+    photos = message.get_photo_attachments()
+    if not photos: return 0
+    logger.info(f"Получено изображений от пользователя {message.from_id}: {len(photos)}")
+
+    for i,photo in enumerate(photos):
+        processing_msg = await message.answer(f"🖼 Обрабатываю изображение {i+1}...")
+        try:
+            '''
+            if photo.images:   # неправильно - должно быть photo.sizes !!!
+                largest = max(photo.images, key=lambda x: x.width * x.height)
+                image_url = largest.url
+            else:
+                logger.info (f"{photo.sizes}")
+                logger.info (f"{photo.orig_photo.to_dict()}")
+                for attr in dir(photo.orig_photo):
+                    if  not attr.startswith('__') and attr != 'src'  and attr != 'type':
+                        par = "()"  if  callable(getattr(photo, attr))  else ""
+                        logger.info (f"{attr}{par}:\n{type(getattr(photo, attr))}\n{getattr(photo, attr).__doc__}")
+            '''
+            image_url = photo.orig_photo.to_dict().get('url', None)
+
+            if not image_url: raise ValueError("No image URL available")
+            else:             logger.info (f"URL: {image_url}")
+            
+            result = RAGPipeline().process_image(image_url, user_query)
+
+            if result.get('error'):
+                await message.answer(f"❌ Ошибка при обработке изображения: {result['error']}")
+                break
+
+            response_text = "<b>📄 Текст с изображения:</b>\n"
+            response_text += result['extracted_text'] + "\n\n"
+            if result.get('rag_answer'):
+                response_text += f"<b>💡 Ответ на ваш вопрос:</b>\n{result['rag_answer']}"
+
+            await send_long_message(message, response_text)
+            logger.info(f"Изображение обработано для пользователя {message.from_id}")
+
+        except Exception as e:
+            logger.error(f"Ошибка при обработке изображения: {e}")
+            await message.answer(f"❌ Произошла ошибка: {str(e)}")
+            break
+
+    return  i +1
+
+
 # ========== ОБРАБОТЧИКИ КОМАНД ==========
 
 @bot.on.message(TextRule(["/start", "привет", "здравствуй", "хай", "hi", "hello"], ignore_case=True))
@@ -164,10 +215,10 @@ async def cmd_start(message: VKMessage):
     logger.info(f"Пользователь {message.from_id} запустил бота")
 
     welcome_text = """
-🤖 <b>Добро пожаловать в RAG-бота (aitunnel.ru)!</b>
+🤖 <b>Добро пожаловать в RAG-бота !</b>
 
 Я интеллектуальный ассистент с доступом к базе знаний.
-Работаю через aitunnel.ru - совместимый с OpenAI endpoint.
+Работаю через OpenAI-совместимый endpoint.
 
 <b>Мои возможности:</b>
 📚 Поиск информации в базе знаний (RAG)
@@ -187,7 +238,7 @@ async def cmd_start(message: VKMessage):
 • Отправьте изображение с текстом, и я его обработаю
 • Используйте /ask для явного RAG-запроса
 
-Powered by aitunnel.ru + FAISS
+Powered by RAG + FAISS
 """
     await message.answer(welcome_text, parse_mode="html")
 
@@ -231,14 +282,14 @@ RAG - это технология, которая позволяет мне на
 /clear - Очистить историю разговора
 
 <b>4️⃣ Технические детали</b>
-🔸 API: aitunnel.ru (OpenAI-совместимый)
+🔸 API: OpenAI-совместимый
 🔸 Модель чата: gpt-4o-mini
 🔸 Модель vision: gpt-4o-mini
 🔸 Эмбеддинги: text-embedding-3-small
 🔸 Векторная БД: FAISS
 🔸 HTTP клиент: requests
 
-<b>Преимущества aitunnel.ru версии:</b>
+<b>Преимущества версии:</b>
 ✅ Работа с любыми OpenAI-совместимыми API
 ✅ Полный контроль над запросами
 ✅ Легкая отладка и мониторинг
@@ -261,7 +312,7 @@ async def cmd_ingest(message: VKMessage):
     """
     logger.info(f"Запрос на индексацию от пользователя {message.from_id}")
 
-    await message.answer("📥 Начинаю индексацию документов через aitunnel.ru...")
+    await message.answer("📥 Начинаю индексацию документов...")
 
     try:
         documents, sources = load_documents_from_directory(DOCS_PATH)
@@ -276,7 +327,6 @@ async def cmd_ingest(message: VKMessage):
         await message.answer(f"📄 Найдено документов: {len(documents)}\nНачинаю обработку...")
 
         # Создаем RAG pipeline
-        from rag.pipeline import RAGPipeline
         rag_pipeline = RAGPipeline()
 
         success = rag_pipeline.index_documents(documents, sources)
@@ -324,7 +374,7 @@ async def cmd_stats(message: VKMessage):
         history_count = len(conversation_history.get(user_id, [])) // 2
 
         stats_text = f"""
-📊 <b>Статистика RAG-системы (aitunnel.ru)</b>
+📊 <b>Статистика RAG-системы </b>
 
 <b>Состояние базы знаний:</b>
 {status_emoji} {status_text}
@@ -344,7 +394,7 @@ async def cmd_stats(message: VKMessage):
 • Модель vision: {VISION_MODEL}
 • Эмбеддинги: {EMBED_MODEL}
 • Таймаут: {REQUEST_TIMEOUT} сек
-• API endpoint: {API_URL}
+• API endpoint: {CHAT_API_URL}
 """
         await message.answer(stats_text, parse_mode="html")
 
@@ -367,8 +417,26 @@ async def cmd_clear(message: VKMessage):
         await message.answer("ℹ️ История разговора уже пуста.")
 
 
+@bot.on.message(TextRule(["/test"], ignore_case=True))
+async def cmd_test(message: VKMessage):
+    """
+    Обработчик команды /test - проверка подключения к API.
+    """
+    logger.info(f"Проверка подключения от пользователя {message.from_id}")
+    await message.answer("🔄 Проверяю подключение к API...")
+    try:
+        success = RAGPipeline().test_connection()
+        if success:
+            await message.answer("✅ Подключение к API работает корректно!")
+        else:
+            await message.answer("❌ Проблемы с подключением к API. См. логи.")
+    except Exception as e:
+        logger.error(f"Ошибка при проверке подключения: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)}")
+
+
 @bot.on.message()
-async def cmd_ask(message: VKMessage):
+async def handle_message(message: VKMessage):
     """
     Обработчик команды /ask - RAG-запрос.
     """
@@ -380,45 +448,50 @@ async def cmd_ask(message: VKMessage):
         )
         return
 
+    if  await handle_photo(message, query):  return
     logger.info(f"RAG-запрос от пользователя {message.from_id}: >{query}<")
     processing_msg = await message.answer("🔍 Ищу информацию в базе знаний...")
 
     try:
-        # Создаем RAG pipeline
-        from rag.pipeline import RAGPipeline
-        rag_pipeline = RAGPipeline()
+        user_id = message.from_id
+        if user_id not in conversation_history:
+            conversation_history[user_id] = []
 
-        result = rag_pipeline.query(query)
+        result = RAGPipeline().query_with_history(query, conversation_history[user_id])
 
-        # Формируем ответ БЕЗ источников
-        response_text = f"<b>💡 Ответ:</b>\n{result['answer']}"
+        conversation_history[user_id].append({"role": "user", "content": query})
+        conversation_history[user_id].append({"role": "assistant", "content": result['answer']})
 
-        #await processing_msg.delete()
+        if len(conversation_history[user_id]) > MAX_HISTORY_LENGTH * 2:
+            conversation_history[user_id] = conversation_history[user_id][-(MAX_HISTORY_LENGTH * 2):]
+            logger.info(f"История обрезана до {MAX_HISTORY_LENGTH} пар сообщений")
+
+        response_text = result['answer']
         await send_long_message(message, response_text)
-
-        logger.info(f"Ответ отправлен пользователю {message.from_id}")
+        logger.info(f"Ответ отправлен пользователю {user_id} (история: {len(conversation_history[user_id])//2} сообщений)")
 
     except Exception as e:
         logger.error(f"Ошибка при обработке запроса: {e}")
-        #await processing_msg.delete()
         await message.answer(f"❌ Произошла ошибка: {str(e)}")
+
+    return
 
 
 
 # ========== ОСНОВНОЙ ЗАПУСК БОТА ==========
 if __name__ == "__main__":
-    logger.info("Запуск VK-бота с RAG-функциональностью (aitunnel.ru)")
+    logger.info("Запуск VK-бота с RAG-функциональностью ")
 
     # Проверяем наличие токена
-    if not API_TOKEN:
-        logger.error("VK_TEST_TOKEN не установлен в переменных окружения!")
-        print("❌ VK_TEST_TOKEN не установлен в переменных окружения!")
+    if not VK_API_TOKEN:
+        logger.error("VK_API_TOKEN не установлен в переменных окружения!")
+        print("❌ VK_API_TOKEN не установлен в переменных окружения!")
         exit(1)
 
     # Проверяем наличие API ключа
-    if not API_KEY:
-        logger.error("AITUNNEL_API_KEY не установлен в переменных окружения!")
-        print("❌ AITUNNEL_API_KEY не установлен в переменных окружения!")
+    if not CHAT_API_KEY:
+        logger.error("CHAT_API_KEY не установлен в переменных окружения!")
+        print("❌ CHAT_API_KEY не установлен в переменных окружения!")
         exit(1)
 
     # Создаем директории если их нет

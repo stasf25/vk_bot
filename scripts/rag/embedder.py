@@ -1,5 +1,5 @@
 """
-Embedder для создания векторных представлений через aitunnel.ru API.
+Embedder для создания векторных представлений через embeddings API.
 """
 
 import json
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import requests
 from requests.exceptions import RequestException
 
-from config import API_URL, API_KEY, EMBED_MODEL, EMBEDDINGS_ENDPOINT, REQUEST_TIMEOUT
+from config import EMBED_API_URL, EMBED_API_KEY, EMBED_MODEL, EMBED_ENDPOINT, REQUEST_TIMEOUT
 
 # ========== НАСТРОЙКА ЛОГИРОВАНИЯ ==========
 logger = logging.getLogger(__name__)
@@ -18,15 +18,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EmbedderConfig:
     """Конфигурация Embedder"""
-    api_url: str = API_URL
-    api_key: str = API_KEY
+    api_url: str = EMBED_API_URL
+    api_key: str = EMBED_API_KEY
     model: str = EMBED_MODEL
-    endpoint: str = EMBEDDINGS_ENDPOINT
+    endpoint: str = EMBED_ENDPOINT
     timeout: int = REQUEST_TIMEOUT
 
 class Embedder:
     """
-    Embedder для создания векторных представлений через aitunnel.ru API.
+    Embedder для создания векторных представлений через embeddings API.
     """
 
     def __init__(self, config: EmbedderConfig = None):
@@ -35,7 +35,7 @@ class Embedder:
             "Authorization": f"Bearer {self.config.api_key}",
             "Content-Type": "application/json"
         }
-        self.embedding_dimension = self.get_embedding_dimension()
+        self.embedding_dimension = 0
     
     @property
     def model(self):
@@ -56,7 +56,7 @@ class Embedder:
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """
-        Получает эмбеддинги для списка текстов через aitunnel API.
+        Получает эмбеддинги для списка текстов через embeddings API.
 
         Args:
             texts: Список текстов для эмбеддингов
@@ -66,6 +66,7 @@ class Embedder:
         """
         embeddings = []
         max_embeddings_per_request = 10  # Максимум эмбеддингов в одном запросе
+
 
         # Разбиваем на batches если нужно
         for i in range(0, len(texts), max_embeddings_per_request):
@@ -88,8 +89,9 @@ class Embedder:
                 # Извлекаем эмбеддинги
                 for item in result.get("data", []):
                     embedding = item.get("embedding", [])
-                    if not hasattr(self, "embedding_dimension") or len(embedding) == self.embedding_dimension:
+                    if  not self.embedding_dimension  or  len(embedding) == self.embedding_dimension  >0:
                         embeddings.append(embedding)
+                        self.embedding_dimension = len(embedding)
                     else:
                         logger.warning(f"Некорректный размер эмбеддинга: {len(embedding)}")
 
@@ -101,6 +103,8 @@ class Embedder:
                 raise Exception(f"Ошибка при парсинге ответа: {str(e)}")
 
         return embeddings
+
+
     def get_embedding_dimension(self) -> int:
         """
         Определяет размерность векторов эмбеддингов.
@@ -116,5 +120,16 @@ class Embedder:
             return dimension
             
         except Exception as e:
-            logger.error(f"❌ Ошибка подключения к ProxyAPI: {e}")
+            logger.error(f"❌ Ошибка подключения к embeddings API: {e}")
         return 0
+
+
+    def test_connection(self) -> bool:
+        """
+        Проверяет доступность модели, заодно определяя размерность эьбеддинга.
+        
+        Returns:
+            True/False
+        """
+        self.embedding_dimension = self.get_embedding_dimension()
+        return  self.embedding_dimension > 0

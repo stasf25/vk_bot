@@ -9,16 +9,10 @@ from rag.embedder import Embedder
 from rag.vectorstore import FAISSVectorStore
 from rag.retriever import DocumentRetriever
 from config import (
-    API_URL,
-    API_KEY, 
-    CHAT_MODEL,
-    CHAT_ENDPOINT,
-    VISION_MODEL,
-    SYSTEM_PROMPT, 
-    RAG_PROMPT_TEMPLATE,
-    TOP_K_RESULTS,
-    MAX_CONTEXT_LENGTH,
-    REQUEST_TIMEOUT
+    CHAT_API_URL, CHAT_API_KEY, CHAT_MODEL, CHAT_ENDPOINT,
+    VISION_API_URL, VISION_API_KEY, VISION_ENDPOINT, VISION_MODEL,
+    SYSTEM_PROMPT, RAG_PROMPT_TEMPLATE, TOP_K_RESULTS,
+    MAX_CONTEXT_LENGTH, REQUEST_TIMEOUT
 )
 
 # Настраиваем логирование
@@ -27,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class RAGPipeline:
     """
-    RAG-пайплайн с использованием ProxyAPI.
+    RAG-пайплайн с использованием RAG API.
     
     Все запросы к LLM выполняются через HTTP, что позволяет:
     - Использовать любые OpenAI-совместимые API
@@ -40,11 +34,18 @@ class RAGPipeline:
         """
         Инициализация RAG-пайплайна.
         """
-        logger.info("Инициализация RAG Pipeline (ProxyAPI)...")
+        logger.info("Инициализация RAG Pipeline (RAG API)...")
         
         # Настраиваем endpoints и headers
-        self.api_url = API_URL.rstrip('/')
-        self.api_key = API_KEY
+        self.api_url = CHAT_API_URL.rstrip('/')
+        self.vision_url = VISION_API_URL.rstrip('/')
+        self.vision_key = VISION_API_KEY
+        self.vision_endpoint = VISION_ENDPOINT
+        self.vision_headers = {
+            "Authorization": f"Bearer {self.vision_key}",
+            "Content-Type": "application/json"
+        }
+        self.api_key = CHAT_API_KEY
         
         self.chat_endpoint = CHAT_ENDPOINT
         
@@ -131,7 +132,7 @@ class RAGPipeline:
         # Добавляем текущий вопрос с RAG контекстом
         messages.append({"role": "user", "content": prompt_with_context})
         
-        # Шаг 5: Отправляем запрос к ProxyAPI
+        # Шаг 5: Отправляем запрос к RAG API
         logger.info(f"Отправка запроса к модели {CHAT_MODEL} (всего сообщений: {len(messages)})")
         try:
             payload = {
@@ -174,7 +175,7 @@ class RAGPipeline:
     
     def process_image(self, image_url: str, user_query: str = None) -> Dict[str, any]:
         """
-        Обрабатывает изображение с помощью vision модели через ProxyAPI.
+        Обрабатывает изображение с помощью vision модели через RAG API.
         
         Args:
             image_url: URL изображения
@@ -207,8 +208,8 @@ class RAGPipeline:
             }
             
             response = requests.post(
-                f"{self.api_url}{self.chat_endpoint}",
-                headers=self.headers,
+                f"{self.vision_url}{self.vision_endpoint}",
+                headers=self.vision_headers,
                 json=payload,
                 timeout=REQUEST_TIMEOUT
             )
@@ -331,35 +332,70 @@ class RAGPipeline:
     
     def test_connection(self) -> bool:
         """
-        Проверяет доступность ProxyAPI.
-        
+        Проверяет доступность всех API (EMBED, CHAT, VISION).
+
         Returns:
-            True если API доступен
+            True если все API доступны
         """
         try:
-            # Проверяем embeddings API
-            embedder_ok = self.embedder.get_embedding_dimension() >0
-            
+            # Проверяем embeddings API (существующая проверка)
+            embedder_ok = self.embedder.test_connection()
+            if not embedder_ok:
+                logger.error("❌ Embeddings API недоступен")
+                return False
+
             # Проверяем chat completions API
             logger.info("Проверка chat completions API...")
-            payload = {
+            chat_payload = {
                 "model": CHAT_MODEL,
                 "messages": [{"role": "user", "content": "test"}],
                 "max_tokens": 5
             }
-            
-            response = requests.post(
-                f"{self.api_url}{self.chat_endpoint}",
-                headers=self.headers,
-                json=payload,
-                timeout=REQUEST_TIMEOUT
-            )
-            
-            response.raise_for_status()
-            logger.info("✅ Chat completions API работает")
-            
-            return embedder_ok
-            
+            try:
+                response = requests.post(
+                    f"{self.api_url}{self.chat_endpoint}",
+                    headers=self.headers,
+                    json=chat_payload,
+                    timeout=REQUEST_TIMEOUT
+                )
+                response.raise_for_status()
+                logger.info("✅ Chat completions API работает")
+            except requests.exceptions.RequestException as e:
+                logger.error(f"❌ Chat API недоступен: {e}")
+                return False
+
+            # Проверяем vision API с тестовым изображением
+            logger.info("Проверка vision API...")
+            # Используем стабильное изображение с текстом (логотип Wikimedia)
+            test_image_url = "https://www.wikimedia.org/static/images/wmf-logo.png"
+            vision_payload = {
+                "model": VISION_MODEL,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Какой текст изображен на этом изображении?"},
+                            {"type": "image_url", "image_url": {"url": test_image_url}}
+                        ]
+                    }
+                ],
+                "max_tokens": 20
+            }
+            try:
+                response = requests.post(
+                    f"{self.vision_url}{self.vision_endpoint}",
+                    headers=self.vision_headers,
+                    json=vision_payload,
+                    timeout=REQUEST_TIMEOUT
+                )
+                response.raise_for_status()
+                logger.info("✅ Vision API работает")
+            except requests.exceptions.RequestException as e:
+                logger.error(f"❌ Vision API недоступен: {e}")
+                return False
+
+            return True
+
         except Exception as e:
             logger.error(f"❌ Ошибка проверки API: {e}")
             return False

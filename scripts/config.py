@@ -1,9 +1,10 @@
 """
-Конфигурация для Telegram-бота с RAG на основе ProxyAPI.
+Конфигурация для VK-бота с RAG на основе нескольких API провайдеров.
 
-Этот модуль содержит настройки для работы бота через кастомный API endpoint,
-совместимый с OpenAI API. Это позволяет использовать собственные или
-альтернативные провайдеры LLM.
+Этот модуль содержит настройки для работы бота через отдельные API endpoints:
+- Chat API (NVIDIA) - для генерации текстовых ответов
+- Vision API (NVIDIA) - для обработки изображений
+- Embeddings API (OpenRouter) - для создания векторных представлений
 """
 
 import os
@@ -15,52 +16,78 @@ CONFIG = dotenv_values()
 
 # ========== VK НАСТРОЙКИ ==========
 # Токен сообщества получаем в настройках сообщества VK
-API_TOKEN = CONFIG.get("VK_TEST_TOKEN", "")
-if not API_TOKEN:
+VK_API_TOKEN = CONFIG.get("VK_TEST_TOKEN", "")
+if not VK_API_TOKEN:
     raise ValueError("VK_TEST_TOKEN не установлен в переменных окружения!")
 
-# ========== AITUNNEL НАСТРОЙКИ ==========
-# URL aitunnel API endpoint (совместимый с OpenAI API)
-# Примеры:
-# - https://api.aitunnel.ru/openai/v1
-# - https://your-aitunnel.com/v1
-# - http://localhost:8000/v1
-API_URL = CONFIG.get("AITUNNEL_API_URL", "https://api.aitunnel.ru/openai/v1")
+# ========== CHAT API НАСТРОЙКИ (NVIDIA) ==========
+# URL для чат API
+CHAT_API_URL = CONFIG.get("CHAT_API_URL", "")
+if not CHAT_API_URL:
+    raise ValueError("CHAT_API_URL не установлен в переменных окружения!")
 
-# API ключ для доступа к aitunnel
-API_KEY = CONFIG.get("AITUNNEL_API_KEY", "")
-if not API_KEY:
-    raise ValueError("AITUNNEL_API_KEY не установлен в переменных окружения!")
+# API ключ для доступа к чат API
+CHAT_API_KEY = CONFIG.get("CHAT_API_KEY", "")
+if not CHAT_API_KEY:
+    raise ValueError("CHAT_API_KEY не установлен в переменных окружения!")
 
-# Endpoints для aitunnel API
-CHAT_ENDPOINT = CONFIG.get("AITUNNEL_CHAT_ENDPOINT", "/chat/completions")
-EMBEDDINGS_ENDPOINT = CONFIG.get("AITUNNEL_EMBEDDINGS_ENDPOINT", "/embeddings")
-
-# Модель для создания эмбеддингов (векторных представлений текста)
-EMBED_MODEL = CONFIG.get("EMBED_MODEL", "text-embedding-3-small")
-if not EMBED_MODEL:
-    raise ValueError("EMBED_MODEL не установлен в переменных окружения!")
+# Endpoint для чат запросов
+CHAT_ENDPOINT = CONFIG.get("CHAT_ENDPOINT", "/chat/completions")
 
 # Модель для генерации ответов (чат)
-CHAT_MODEL = CONFIG.get("CHAT_MODEL", "gpt-4o-mini")
+CHAT_MODEL = CONFIG.get("CHAT_MODEL", "qwen/qwen3.5-122b-a10b")
 if not CHAT_MODEL:
     raise ValueError("CHAT_MODEL не установлен в переменных окружения!")
 
+# ========== VISION API НАСТРОЙКИ (NVIDIA) ==========
+# URL для vision API
+VISION_API_URL = CONFIG.get("VISION_API_URL", "")
+if not VISION_API_URL:
+    raise ValueError("VISION_API_URL не установлен в переменных окружения!")
+
+# API ключ для доступа к vision API
+VISION_API_KEY = CONFIG.get("VISION_API_KEY", "")
+if not VISION_API_KEY:
+    raise ValueError("VISION_API_KEY не установлен в переменных окружения!")
+
+# Endpoint для vision запросов
+VISION_ENDPOINT = CONFIG.get("VISION_ENDPOINT", "/chat/completions")
+
 # Модель для обработки изображений (vision)
-VISION_MODEL = CONFIG.get("VISION_MODEL", "gpt-4o-mini")
+VISION_MODEL = CONFIG.get("VISION_MODEL", "qwen/qwen3.5-122b-a10b")
 if not VISION_MODEL:
     raise ValueError("VISION_MODEL не установлен в переменных окружения!")
 
+# ========== EMBEDDINGS API НАСТРОЙКИ (OpenRouter) ==========
+# URL для embeddings API
+EMBED_API_URL = CONFIG.get("EMBED_API_URL", "")
+if not EMBED_API_URL:
+    raise ValueError("EMBED_API_URL не установлен в переменных окружения!")
+
+# API ключ для доступа к embeddings API
+EMBED_API_KEY = CONFIG.get("EMBED_API_KEY", "")
+if not EMBED_API_KEY:
+    raise ValueError("EMBED_API_KEY не установлен в переменных окружения!")
+
+# Endpoint для embeddings запросов
+EMBED_ENDPOINT = CONFIG.get("EMBED_ENDPOINT", "/embeddings")
+
+# Модель для создания эмбеддингов (векторных представлений текста)
+EMBED_MODEL = CONFIG.get("EMBED_MODEL", "nvidia/llama-nemotron-embed-vl-1b-v2:free")
+if not EMBED_MODEL:
+    raise ValueError("EMBED_MODEL не установлен в переменных окружения!")
+
+# ========== ОБЩИЕ НАСТРОЙКИ ==========
 # Таймаут для HTTP запросов (в секундах)
 REQUEST_TIMEOUT = 60
 
 # ========== FAISS НАСТРОЙКИ ==========
 # Путь к индексному файлу FAISS (векторная база данных)
-PROJECT_ROOT     = f"{find_dotenv('.env')[0:-5]}"
-DATA_DIR         = f"{PROJECT_ROOT}/data"
+PROJECT_ROOT = f"{find_dotenv('.env')[0:-5]}"
+DATA_DIR = f"{PROJECT_ROOT}/data"
 FAISS_INDEX_PATH = Path(DATA_DIR) / "index.faiss"
 FAISS_METADATA_PATH = Path(DATA_DIR) / "metadata.json"
-DOCS_PATH        = Path(DATA_DIR) / "docs"
+DOCS_PATH = Path(DATA_DIR) / "docs"
 
 # ========== RAG НАСТРОЙКИ ==========
 # Количество документов для извлечения из базы знаний
@@ -98,4 +125,3 @@ LOG_LEVEL = "INFO"
 
 # Формат сообщений в логах
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-

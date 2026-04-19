@@ -1,0 +1,17 @@
+VK_TEST_TOKEN=vk1.a.R8dgZH-VU0sqeAbFtNVXTiqwYM01RfLTQxaO-ia1vtXyMTbIezBJPH_h2DbAfW8K06sBPxcBkHI-G3LOmVsdKNBQ21ZrCCBCoQO8fP2MMLo7c4dukp93lxGJVhi30g5-J7xJgwBeOXYwmCeFFzGoVwJozGJjxXQAvqOzyrrJqbncOvgKxFexA7z_2qFw0lZCysDRuQ9zWhOBprycyCb-vw
+#AITUNNEL_API_URL=https://api.aitunnel.ru/openai/v1
+
+CHAT_API_URL=https://integrate.api.nvidia.com/v1
+CHAT_API_KEY=nvapi-
+CHAT_ENDPOINT=/chat/completions
+CHAT_MODEL=qwen/qwen3.5-122b-a10b
+
+VISION_API_URL=https://integrate.api.nvidia.com/v1
+VISION_API_KEY=nvapi-
+VISION_ENDPOINT=/chat/completions
+VISION_MODEL=qwen/qwen3.5-122b-a10b
+
+EMBED_API_URL=https://openrouter.ai/api/v1
+EMBED_API_KEY=sk-or-v1-
+EMBED_ENDPOINT=/embeddings
+EMBED_MODEL=nvidia/llama-nemotron-embed-vl-1b-v2:free
